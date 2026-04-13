@@ -185,13 +185,13 @@ def build_html_email(digest):
 
         items_html = ""
         for item in items:
-            link_html = f'<a href="{item["link"]}" style="color:{dot_color};font-size:11px;font-weight:500;text-decoration:none;">Read more →</a>' if item.get("link") else ""
+            link_text = f' · {item["link"]}' if item.get("link") else ""
             items_html += f"""
             <div style="border-left:3px solid {border_color};padding-left:14px;margin-bottom:16px;">
               <p style="margin:0;font-size:14px;font-weight:600;color:#1a1a1a;">{item['headline']}</p>
               <p style="margin:6px 0 4px;font-size:13px;color:#444;line-height:1.6;">{item['context']}</p>
               <p style="margin:0 0 4px;font-size:12px;color:{dot_color};font-weight:500;">▸ So what for Nium: {item['so_what']}</p>
-              <p style="margin:4px 0 0;font-size:11px;color:#888;">Source: {item.get('source','')}&nbsp;&nbsp;{link_html}</p>
+              <p style="margin:4px 0 0;font-size:11px;color:#888;">Source: {item.get('source','')}{link_text}</p>
             </div>"""
 
         sections_html += f"""

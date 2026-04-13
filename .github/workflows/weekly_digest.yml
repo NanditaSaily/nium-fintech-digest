@@ -1,0 +1,32 @@
+name: Weekly Fintech Digest
+
+on:
+  schedule:
+    # Every Friday at 12:30 UTC = 6:00 PM IST
+    - cron: '30 12 * * 5'
+  workflow_dispatch:
+    # Allows you to run manually from GitHub Actions tab anytime
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install anthropic feedparser
+
+      - name: Run digest script
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+          SLACK_CHANNEL_EMAIL: ${{ secrets.SLACK_CHANNEL_EMAIL }}
+        run: python digest.py

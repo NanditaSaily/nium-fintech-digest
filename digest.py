@@ -1,4 +1,5 @@
-import anthropic
+
+ import anthropic
 import feedparser
 import smtplib
 import ssl
@@ -88,8 +89,11 @@ def fetch_news():
 def summarise_with_claude(articles):
     client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
 
+    # Limit to 60 most recent articles to avoid token overflow
+    articles = articles[:60]
+
     articles_text = "\n\n".join([
-        f"Title: {a['title']}\nSource: {a['source']}\nDate: {a['published']}\nSummary: {a['summary']}\nLink: {a['link']}"
+        f"Title: {a['title']}\nSource: {a['source']}\nDate: {a['published']}\nSummary: {a['summary'][:300]}\nLink: {a['link']}"
         for a in articles
     ])
 
@@ -158,7 +162,7 @@ Return only valid JSON. No preamble, no markdown, no backticks."""
 
     message = client.messages.create(
         model="claude-opus-4-5",
-        max_tokens=4000,
+        max_tokens=8000,
         messages=[{"role": "user", "content": prompt}]
     )
 

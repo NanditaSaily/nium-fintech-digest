@@ -11,9 +11,9 @@ from urllib.parse import quote
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
-CLAUDE_API_KEY = os.environ["CLAUDE_API_KEY"]
-SENDER_EMAIL   = os.environ["SENDER_EMAIL"]
-SENDER_PASSWORD = os.environ["SENDER_PASSWORD"]  # Gmail App Password or Outlook password
+CLAUDE_API_KEY      = os.environ["CLAUDE_API_KEY"]
+SENDER_EMAIL        = os.environ["SENDER_EMAIL"]
+SENDER_PASSWORD     = os.environ["SENDER_PASSWORD"]
 SLACK_CHANNEL_EMAIL = os.environ["SLACK_CHANNEL_EMAIL"]
 
 COMPETITORS = [
@@ -23,26 +23,23 @@ COMPETITORS = [
 ]
 
 RSS_FEEDS = [
-    # General fintech news
     "https://sifted.eu/feed",
     "https://www.finextra.com/rss/headlines.aspx",
     "https://www.pymnts.com/feed/",
     "https://techcrunch.com/category/fintech/feed/",
     "https://fintechnexus.com/feed/",
-    # Crunchbase News (free editorial RSS)
     "https://news.crunchbase.com/feed/",
-    # Google News RSS for fintech M&A and funding
     "https://news.google.com/rss/search?q=fintech+acquisition+OR+merger&hl=en-US&gl=US&ceid=US:en",
     "https://news.google.com/rss/search?q=fintech+funding+OR+raises+OR+Series&hl=en-US&gl=US&ceid=US:en",
     "https://news.google.com/rss/search?q=cross-border+payments+news&hl=en-US&gl=US&ceid=US:en",
     "https://news.google.com/rss/search?q=embedded+finance+news&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=fintech+earnings+results&hl=en-US&gl=US&ceid=US:en",
 ]
 
-# Add Google News RSS for each competitor
 for competitor in COMPETITORS:
     encoded = quote(competitor)
     RSS_FEEDS.append(
-        f"https://news.google.com/rss/search?q={encoded}&hl=en-US&gl=US&ceid=US:en"
+        f"https://news.google.com/rss/search?q={encoded}+fintech&hl=en-US&gl=US&ceid=US:en"
     )
 
 # ── Fetch News ───────────────────────────────────────────────────────────────
@@ -61,7 +58,6 @@ def fetch_news():
                     continue
                 seen_titles.add(title)
 
-                # Parse published date
                 published = None
                 if hasattr(entry, "published_parsed") and entry.published_parsed:
                     import time
@@ -100,7 +96,7 @@ def summarise_with_claude(articles):
     competitors_str = ", ".join(COMPETITORS)
     week_str = datetime.now().strftime("%d %B %Y")
 
-    prompt = f"""You are a strategic finance analyst at Nium, a leading B2B cross-border payments and card issuance company. 
+    prompt = f"""You are a strategic finance analyst at Nium, a leading B2B cross-border payments and card issuance company.
 Your job is to produce a sharp, executive-level weekly fintech intelligence digest for Nium's CEO.
 
 Today's date: {week_str}
@@ -111,15 +107,24 @@ Here are this week's fintech news articles:
 {articles_text}
 
 Instructions:
-1. Select only the 8-12 most important and relevant stories. Drop anything irrelevant to fintech, payments, FX, card issuance, embedded finance, or B2B financial infrastructure.
-2. Categorise each story into one of: M&A, Fundraising, Competitor Moves, Regulatory, Market Signals
-3. For each story write: a one-line headline summary, a 2-sentence context explanation, and a "So what for Nium" insight (1 sentence, specific and strategic)
-4. End with a "One to Watch" wildcard — the most interesting or surprising story that deserves attention
-5. Be direct, specific, and analytical. Write like a sharp analyst briefing a CEO, not like a newsletter.
+1. Select only the 8-15 most important and relevant stories. Drop anything irrelevant to fintech, payments, FX, card issuance, embedded finance, or B2B financial infrastructure.
+2. Categorise each story into one of: M&A, Fundraising, Competitor Moves, Regulatory, Market Signals, Earnings
+3. For each story write: a one-line headline, ONE sentence of context (keep it tight — executives want speed), and a "So what for Nium" insight (1 sentence, specific and strategic)
+4. For the Earnings section — only include if any tracked competitor published earnings this week. Include: revenue, growth rate, key metric, and one strategic takeaway. Leave the earnings array empty [] if no earnings this week.
+5. Write a TLDR section — 4-5 bullet points max, one per category, single punchy sentence each. This is the first thing the CEO reads.
+6. End with a "One to Watch" wildcard — the most interesting or surprising story.
+7. Be direct and concise. Every word must earn its place. Max 1-2 sentences per story.
 
 Format your response as valid JSON with this exact structure:
 {{
   "week": "{week_str}",
+  "tldr": [
+    "M&A: ...",
+    "Fundraising: ...",
+    "Competitor moves: ...",
+    "Regulatory: ...",
+    "One to watch: ..."
+  ],
   "sections": {{
     "ma": [
       {{"headline": "...", "context": "...", "so_what": "...", "source": "...", "link": "..."}}
@@ -134,6 +139,9 @@ Format your response as valid JSON with this exact structure:
       {{"headline": "...", "context": "...", "so_what": "...", "source": "...", "link": "..."}}
     ],
     "market_signals": [
+      {{"headline": "...", "context": "...", "so_what": "...", "source": "...", "link": "..."}}
+    ],
+    "earnings": [
       {{"headline": "...", "context": "...", "so_what": "...", "source": "...", "link": "..."}}
     ]
   }},
@@ -155,7 +163,6 @@ Return only valid JSON. No preamble, no markdown, no backticks."""
     )
 
     raw = message.content[0].text.strip()
-    # Strip markdown fences if present
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
@@ -165,9 +172,21 @@ Return only valid JSON. No preamble, no markdown, no backticks."""
 # ── Build HTML Email ──────────────────────────────────────────────────────────
 
 def build_html_email(digest):
-    week = digest["week"]
+    week     = digest["week"]
     sections = digest["sections"]
-    otw = digest["one_to_watch"]
+    otw      = digest["one_to_watch"]
+    tldr     = digest.get("tldr", [])
+
+    # TLDR section
+    tldr_items = "".join([
+        f'<p style="margin:4px 0;font-size:13px;color:#1a1a1a;line-height:1.6;">• {item}</p>'
+        for item in tldr
+    ])
+    tldr_html = f"""
+    <div style="padding:20px 28px;border-bottom:1px solid #f0f0f0;background:#f0faf5;">
+      <p style="margin:0 0 10px;font-size:12px;font-weight:600;color:#0F6E56;text-transform:uppercase;letter-spacing:0.07em;">⚡ TL;DR — This week in fintech</p>
+      {tldr_items}
+    </div>"""
 
     section_config = [
         ("ma",              "M&A",               "#E24B4A", "#F09595"),
@@ -175,6 +194,7 @@ def build_html_email(digest):
         ("competitor_moves","Competitor moves",   "#854F0B", "#FAC775"),
         ("regulatory",      "Regulatory",         "#534AB7", "#AFA9EC"),
         ("market_signals",  "Market signals",     "#0F6E56", "#5DCAA5"),
+        ("earnings",        "Earnings",           "#3B6D11", "#97C459"),
     ]
 
     sections_html = ""
@@ -203,7 +223,7 @@ def build_html_email(digest):
           {items_html}
         </div>"""
 
-    # One to watch section
+    # One to watch
     otw_html = f"""
     <div style="padding:20px 28px;border-bottom:1px solid #f0f0f0;background:#fffbf0;">
       <p style="margin:0 0 12px;font-size:12px;font-weight:600;color:#854F0B;text-transform:uppercase;letter-spacing:0.07em;">⚑ One to watch</p>
@@ -227,6 +247,7 @@ def build_html_email(digest):
       <p style="margin:6px 0 0;font-size:13px;color:#9FE1CB;">Week of {week} · Auto-generated every Friday</p>
     </div>
 
+    {tldr_html}
     {sections_html}
     {otw_html}
 
@@ -250,22 +271,19 @@ def send_email(html_content, week):
 
     msg.attach(MIMEText(html_content, "html"))
 
-    # Detect if Gmail or Outlook
     if "gmail" in SENDER_EMAIL.lower():
         smtp_server = "smtp.gmail.com"
-        port = 587
     else:
         smtp_server = "smtp.office365.com"
-        port = 587
 
     context = ssl.create_default_context()
-    with smtplib.SMTP(smtp_server, port) as server:
+    with smtplib.SMTP(smtp_server, 587) as server:
         server.ehlo()
         server.starttls(context=context)
         server.login(SENDER_EMAIL, SENDER_PASSWORD)
         server.sendmail(SENDER_EMAIL, SLACK_CHANNEL_EMAIL, msg.as_string())
 
-    print(f"Email sent successfully to Slack channel")
+    print("Email sent successfully to Slack channel")
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 

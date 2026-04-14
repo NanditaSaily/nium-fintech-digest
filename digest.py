@@ -1,4 +1,3 @@
-
 import anthropic
 import feedparser
 import smtplib
@@ -89,6 +88,42 @@ def fetch_news():
 def summarise_with_claude(articles):
     client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
 
+    # TEMPORARY: Inject dummy earnings for testing — remove after review
+    dummy_earnings = {
+        "earnings": [
+            {
+                "company": "Wise",
+                "period": "Q3 FY2026",
+                "metrics": [
+                    {"metric": "Revenue", "value": "£276m", "yoy": "+22%"},
+                    {"metric": "Volume/TPV", "value": "£37bn", "yoy": "+18%"},
+                    {"metric": "Gross profit", "value": "£142m", "yoy": "+19%"},
+                    {"metric": "EBITDA margin", "value": "31%", "yoy": "+3pp"},
+                    {"metric": "Take rate", "value": "0.64%", "yoy": "Flat"},
+                    {"metric": "EV / Revenue", "value": "8.2x", "yoy": "-1.1x"}
+                ],
+                "takeaway": "Strong APAC corridor growth with pricing holding steady despite rising competition.",
+                "so_what": "Wise's volume growth in APAC directly overlaps our B2B expansion targets — stable take rate suggests no price war imminent but watch H2 closely.",
+                "source": "Wise Investor Relations",
+                "link": "https://wise.com/investor-relations"
+            },
+            {
+                "company": "Adyen",
+                "period": "FY2025 H2",
+                "metrics": [
+                    {"metric": "Revenue", "value": "€1.08bn", "yoy": "+23%"},
+                    {"metric": "Volume/TPV", "value": "€612bn", "yoy": "+28%"},
+                    {"metric": "EBITDA margin", "value": "46%", "yoy": "+4pp"},
+                    {"metric": "EV / Revenue", "value": "11.4x", "yoy": "+0.8x"}
+                ],
+                "takeaway": "Beat consensus on revenue and margins, driven by enterprise wins in North America and embedded finance platform adoption.",
+                "so_what": "Adyen's 46% EBITDA margin sets a benchmark — their embedded finance traction with platforms is a direct signal for Nium's issuing business.",
+                "source": "Adyen Investor Relations",
+                "link": "https://investors.adyen.com"
+            }
+        ]
+    }
+
     # Limit to 60 most recent articles to avoid token overflow
     articles = articles[:60]
 
@@ -114,7 +149,12 @@ Instructions:
 1. Select only the 8-15 most important and relevant stories. Drop anything irrelevant to fintech, payments, FX, card issuance, embedded finance, or B2B financial infrastructure.
 2. Categorise each story into one of: M&A, Fundraising, Competitor Moves, Regulatory, Market Signals, Earnings
 3. For each story write: a one-line headline, ONE sentence of context (keep it tight — executives want speed), and a "So what for Nium" insight (1 sentence, specific and strategic)
-4. For the Earnings section — only include if any tracked competitor published earnings this week. Include: revenue, growth rate, key metric, and one strategic takeaway. Leave the earnings array empty [] if no earnings this week.
+4. For the Earnings section — only include if any tracked competitor published earnings this week. For each company format it as:
+   - Company name and period (e.g. "Wise — Q3 FY2026")
+   - A metrics table with these columns: Metric, Value, YoY. Include rows for: Revenue, Volume/TPV, Gross Profit, EBITDA margin, Profitability margin, Take rate (if applicable), EV/Revenue multiple. Only include rows where data is available.
+   - A one sentence takeaway summarising the key story from the results
+   - A "So what for Nium" insight (1 sentence, specific and strategic)
+   Leave the earnings array empty [] if no competitor earnings this week.
 5. Write a TLDR section — 4-5 bullet points max, one per category, single punchy sentence each. This is the first thing the CEO reads.
 6. End with a "One to Watch" wildcard — the most interesting or surprising story.
 7. Be direct and concise. Every word must earn its place. Max 1-2 sentences per story.
@@ -146,7 +186,22 @@ Format your response as valid JSON with this exact structure:
       {{"headline": "...", "context": "...", "so_what": "...", "source": "...", "link": "..."}}
     ],
     "earnings": [
-      {{"headline": "...", "context": "...", "so_what": "...", "source": "...", "link": "..."}}
+      {{
+        "company": "...",
+        "period": "...",
+        "metrics": [
+          {{"metric": "Revenue", "value": "...", "yoy": "..."}},
+          {{"metric": "Volume/TPV", "value": "...", "yoy": "..."}},
+          {{"metric": "Gross profit", "value": "...", "yoy": "..."}},
+          {{"metric": "EBITDA margin", "value": "...", "yoy": "..."}},
+          {{"metric": "Take rate", "value": "...", "yoy": "..."}},
+          {{"metric": "EV / Revenue", "value": "...", "yoy": "..."}}
+        ],
+        "takeaway": "...",
+        "so_what": "...",
+        "source": "...",
+        "link": "..."
+      }}
     ]
   }},
   "one_to_watch": {{
@@ -171,7 +226,12 @@ Return only valid JSON. No preamble, no markdown, no backticks."""
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
-    return json.loads(raw.strip())
+    result = json.loads(raw.strip())
+
+    # TEMPORARY: Inject dummy earnings for testing — remove after review
+    result["sections"]["earnings"] = dummy_earnings["earnings"]
+
+    return result
 
 # ── Build HTML Email ──────────────────────────────────────────────────────────
 
@@ -198,7 +258,6 @@ def build_html_email(digest):
         ("competitor_moves","Competitor moves",   "#854F0B", "#FAC775"),
         ("regulatory",      "Regulatory",         "#534AB7", "#AFA9EC"),
         ("market_signals",  "Market signals",     "#0F6E56", "#5DCAA5"),
-        ("earnings",        "Earnings",           "#3B6D11", "#97C459"),
     ]
 
     sections_html = ""
@@ -227,7 +286,49 @@ def build_html_email(digest):
           {items_html}
         </div>"""
 
-    # One to watch
+    # Earnings section — table format
+    earnings_items = sections.get("earnings", [])
+    earnings_html = ""
+    if earnings_items:
+        earnings_content = ""
+        for item in earnings_items:
+            metrics_rows = ""
+            for i, m in enumerate(item.get("metrics", [])):
+                bg = 'background:var(--color-background-secondary,#f9f9f9);' if i % 2 == 1 else ''
+                yoy_color = "#3B6D11" if "+" in str(m.get("yoy","")) else ("#A32D2D" if "-" in str(m.get("yoy","")) else "#888")
+                metrics_rows += f"""
+                <tr style="{bg}">
+                  <td style="padding:6px 10px;color:#444;border:0.5px solid #e0e0e0;">{m['metric']}</td>
+                  <td style="padding:6px 10px;text-align:right;font-weight:600;color:#1a1a1a;border:0.5px solid #e0e0e0;">{m['value']}</td>
+                  <td style="padding:6px 10px;text-align:right;font-weight:500;color:{yoy_color};border:0.5px solid #e0e0e0;">{m['yoy']}</td>
+                </tr>"""
+
+            earnings_content += f"""
+            <div style="border-left:3px solid #97C459;padding-left:14px;margin-bottom:24px;border-radius:0;">
+              <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#1a1a1a;">{item.get('company','')} — {item.get('period','')}</p>
+              <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px;">
+                <thead>
+                  <tr style="background:#EAF3DE;">
+                    <th style="padding:6px 10px;text-align:left;font-weight:600;color:#3B6D11;border:0.5px solid #C0DD97;">Metric</th>
+                    <th style="padding:6px 10px;text-align:right;font-weight:600;color:#3B6D11;border:0.5px solid #C0DD97;">Value</th>
+                    <th style="padding:6px 10px;text-align:right;font-weight:600;color:#3B6D11;border:0.5px solid #C0DD97;">YoY</th>
+                  </tr>
+                </thead>
+                <tbody>{metrics_rows}</tbody>
+              </table>
+              <p style="margin:0 0 4px;font-size:12px;color:#444;line-height:1.6;">{item.get('takeaway','')}</p>
+              <p style="margin:6px 0 4px;font-size:12px;color:#3B6D11;font-weight:500;">▸ So what for Nium: {item.get('so_what','')}</p>
+              <p style="margin:4px 0 0;font-size:11px;color:#888;">Source: {item.get('source','')}</p>
+            </div>"""
+
+        earnings_html = f"""
+        <div style="padding:20px 28px;border-bottom:1px solid #f0f0f0;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+            <div style="width:9px;height:9px;border-radius:50%;background:#3B6D11;flex-shrink:0;"></div>
+            <p style="margin:0;font-size:12px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.07em;">Earnings</p>
+          </div>
+          {earnings_content}
+        </div>"""
     otw_html = f"""
     <div style="padding:20px 28px;border-bottom:1px solid #f0f0f0;background:#fffbf0;">
       <p style="margin:0 0 12px;font-size:12px;font-weight:600;color:#854F0B;text-transform:uppercase;letter-spacing:0.07em;">⚑ One to watch</p>
@@ -253,6 +354,7 @@ def build_html_email(digest):
 
     {tldr_html}
     {sections_html}
+    {earnings_html}
     {otw_html}
 
     <div style="padding:16px 28px;background:#fafafa;text-align:center;">

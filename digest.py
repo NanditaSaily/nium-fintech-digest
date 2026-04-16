@@ -472,10 +472,6 @@ def main():
         print("Posting TL;DR to Slack via webhook...")
         post_to_slack(digest, report_url)
 
-    print("Sending full formatted digest via email to Slack channel...")
-    html = build_html_report(digest, report_url or "")
-    send_email(html, digest["week"])
-
     print("Done!")
 
 if __name__ == "__main__":

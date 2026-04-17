@@ -381,14 +381,18 @@ def post_to_slack(digest, report_url):
     week = digest["week"]
     tldr = digest.get("tldr", [])
 
-    tldr_text = "\n".join([f"• {item}" for item in tldr])
+    tldr_text = "\n".join([
+        f"• *{item.split(':')[0]}:* {':'.join(item.split(':')[1:]).strip()}" 
+        if ':' in item else f"• {item}" 
+        for item in tldr
+    ])
 
     blocks = [
         {
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": f"📊 Fintech & Competitor Intel — Week of {week}",
+                "text": f"📊 Fintech & Competitor Digest — Week of {week}",
                 "emoji": True
             }
         },

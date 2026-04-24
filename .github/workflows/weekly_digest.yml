@@ -2,8 +2,8 @@ name: Weekly Fintech Digest
 
 on:
   schedule:
-    # Every Friday at 12:30 UTC = 6:00 PM IST
-    - cron: '30 12 * * 5'
+    # Every Friday at 10:30 UTC = 4:00 PM IST
+    - cron: '30 10 * * 5'
   workflow_dispatch:
 
 jobs:

@@ -408,9 +408,10 @@ def post_to_slack(digest, report_url):
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"📋 *Full digest with detailed analysis, source links, earnings tables and So what for Nium insights:*\n<{report_url}|👉 Read the full report here>"
+                "text": f"👉 *<{report_url}|Read the full report here>* for detailed analysis, source links, earnings tables and So what for Nium insights on every story."
             }
         },
+        {"type": "divider"},
         {
             "type": "context",
             "elements": [
